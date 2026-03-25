@@ -1,5 +1,6 @@
 import pyxel
 
+
 # シーン定義
 # choices がある → 選択肢シーン
 # end がある    → エンディングシーン
