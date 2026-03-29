@@ -8,6 +8,20 @@ MG_PLAY_Y_MAX = 89
 MG_PLAYER_SIZE = 4
 MG_MIN_DIST = 32
 
+# ステージ2 薄明かり集め
+MG_LIGHTS_TIMER_MAX  = 900   # 15秒 × 60fps
+MG_LIGHTS_COUNT      = 8     # フィールドの明かり総数
+MG_LIGHTS_REQUIRED   = 6     # クリアに必要な収集数
+MG_NOISE_COUNT       = 5     # ノイズブロックの個数
+MG_NOISE_SPEED       = 1     # ノイズの移動速度（px/frame）
+MG_NOISE_SIZE        = 6     # ノイズブロックの一辺（px）
+MG_LIGHT_RADIUS      = 2     # 明かりの描画半径
+MG_NOISE_HIT_PENALTY = 120   # ノイズ接触ペナルティ（2秒分）
+MG_HURT_INVINCIBLE_FRAMES = 60  # ノイズ接触後の無敵フレーム数（1秒分）
+MG_PLAYER_START_X = 76
+MG_PLAYER_START_Y = 52
+MG_BG_BY_LIGHTS_COUNT = (1, 1, 5, 5, 2, 2, 4)  # 収集数0〜MG_LIGHTS_REQUIRED個に対応する背景色
+
 # シーン定義
 # choices がある → 選択肢シーン
 # next がある    → 直線進行シーン
@@ -52,6 +66,7 @@ SCENES = {
         ],
         "choices": ["息を継ぐための避難所だった", "見たくないものから、ただ逃げただけだった"],
         "next": [3, 6],
+        "minigame": "lights",
     },
     3: {
         "name": "管理人",
@@ -124,6 +139,9 @@ class Game:
         self.char_count = 0
         self.page = 0
         self.next_after_minigame = 0
+        # [開発用] ステージ2ミニゲーム直接起動（確認後はコメントアウト）
+        # self.next_after_minigame = 3
+        # self.start_minigame_lights()
         pyxel.run(self.update, self.draw)
 
     def update(self) -> None:
@@ -137,6 +155,10 @@ class Game:
 
         if self.state == "minigame_fragments":
             self.update_minigame_fragments()
+            return
+
+        if self.state == "minigame_lights":
+            self.update_minigame_lights()
             return
 
         scene = SCENES[self.scene]
@@ -179,6 +201,8 @@ class Game:
                 self.next_after_minigame = next_scene
                 if scene["minigame"] == "fragments":
                     self.start_minigame_fragments()
+                elif scene["minigame"] == "lights":
+                    self.start_minigame_lights()
             else:
                 self.scene = next_scene
         elif "next" in scene:
@@ -193,6 +217,8 @@ class Game:
             self.draw_title()
         elif self.state == "minigame_fragments":
             self.draw_minigame_fragments()
+        elif self.state == "minigame_lights":
+            self.draw_minigame_lights()
         else:
             self.draw_game()
 
@@ -346,8 +372,8 @@ class Game:
     def start_minigame_fragments(self):
         FRAGMENT_TEXTS = ["自分を", "救って", "くれた", "ものに", "進みたい"]
 
-        self.mg_player_x = 76
-        self.mg_player_y = 52
+        self.mg_player_x = MG_PLAYER_START_X
+        self.mg_player_y = MG_PLAYER_START_Y
         self.mg_timer = MG_TIMER_MAX
         self.mg_result = None
         self.mg_phase = "intro"
@@ -384,14 +410,7 @@ class Game:
                 self.mg_phase = "playing"
             return
         if self.mg_result is None:
-            if pyxel.btn(pyxel.KEY_LEFT):
-                self.mg_player_x = max(MG_PLAY_X_MIN, self.mg_player_x - 2)
-            if pyxel.btn(pyxel.KEY_RIGHT):
-                self.mg_player_x = min(MG_PLAY_X_MAX - MG_PLAYER_SIZE + 1, self.mg_player_x + 2)
-            if pyxel.btn(pyxel.KEY_UP):
-                self.mg_player_y = max(MG_PLAY_Y_MIN, self.mg_player_y - 2)
-            if pyxel.btn(pyxel.KEY_DOWN):
-                self.mg_player_y = min(MG_PLAY_Y_MAX + MG_PLAYER_SIZE + 1, self.mg_player_y + 2)
+            self._update_player_move()
             self.mg_timer -= 1
             px, py = self.mg_player_x, self.mg_player_y
             for frag in self.mg_fragments:
@@ -424,6 +443,25 @@ class Game:
         self.char_count = 0
         self.page = 0
         pyxel.play(0, 0)
+
+    def _update_player_move(self):
+        if pyxel.btn(pyxel.KEY_LEFT):
+            self.mg_player_x = max(MG_PLAY_X_MIN, self.mg_player_x - 2)
+        if pyxel.btn(pyxel.KEY_RIGHT):
+            self.mg_player_x = min(MG_PLAY_X_MAX - MG_PLAYER_SIZE + 1, self.mg_player_x + 2)
+        if pyxel.btn(pyxel.KEY_UP):
+            self.mg_player_y = max(MG_PLAY_Y_MIN, self.mg_player_y - 2)
+        if pyxel.btn(pyxel.KEY_DOWN):
+            self.mg_player_y = min(MG_PLAY_Y_MAX + MG_PLAYER_SIZE + 1, self.mg_player_y + 2)
+
+    def _draw_minigame_intro(self, lines):
+        total_h = len(lines) * 10
+        y = (120 - total_h) // 2 - 4
+        for text, col in lines:
+            self.draw_centered_text(text, y, col)
+            y += 10
+        if pyxel.frame_count % 60 < 30:
+            self.draw_centered_text("ENTERでスタート", y + 4, 9)
 
     def draw_minigame_fragments(self):
         pyxel.cls(1)
@@ -481,7 +519,7 @@ class Game:
                 x += self.font.text_width(text) + 2
 
     def _draw_minigame_fragments_intro(self):
-        lines = [
+        self._draw_minigame_intro([
             ("ことば集め", 10),
             ("---", 5),
             ("画面に散った欠片を集め、", 7),
@@ -489,14 +527,174 @@ class Game:
             ("---", 5),
             ("十字キー：移動", 6),
             (f"制限時間：{MG_TIMER_MAX // 60}秒", 6),
-        ]
-        total_h = len(lines) * 10
-        y = (120 - total_h) // 2 - 4
-        for text, col in lines:
-            self.draw_centered_text(text, y, col)
-            y += 10
-        if pyxel.frame_count % 60 < 30:
-            self.draw_centered_text("ENTERでスタート", y + 4, 9)
+        ])
+
+    def start_minigame_lights(self):
+        self.mg_player_x = MG_PLAYER_START_X
+        self.mg_player_y = MG_PLAYER_START_Y
+        self.mg_timer = MG_LIGHTS_TIMER_MAX
+        self.mg_result = None
+        self.mg_phase = "intro"
+        self.mg_lights_collected = 0
+        self.mg_hurt_timer = 0
+        self.state = "minigame_lights"
+
+        placed = []
+        self.mg_lights = []
+        for _ in range(MG_LIGHTS_COUNT):
+            placed_this = False
+            for _ in range(100):
+                x = pyxel.rndi(MG_PLAY_X_MIN, MG_PLAY_X_MAX)
+                y = pyxel.rndi(MG_PLAY_Y_MIN, MG_PLAY_Y_MAX)
+                ok = True
+                for px, py in placed:
+                    if abs(x - px) < MG_MIN_DIST and abs(y - py) < MG_MIN_DIST:
+                        ok = False
+                        break
+                if ok:
+                    placed.append((x, y))
+                    self.mg_lights.append({"x": x, "y": y, "collected": False})
+                    placed_this = True
+                    break
+            if not placed_this:
+                x = pyxel.rndi(MG_PLAY_X_MIN, MG_PLAY_X_MAX)
+                y = pyxel.rndi(MG_PLAY_Y_MIN, MG_PLAY_Y_MAX)
+                self.mg_lights.append({"x": x, "y": y, "collected": False})
+
+        self.mg_noises = []
+        for _ in range(MG_NOISE_COUNT):
+            for _ in range(100):
+                x = pyxel.rndi(MG_PLAY_X_MIN, MG_PLAY_X_MAX - MG_NOISE_SIZE)
+                y = pyxel.rndi(MG_PLAY_Y_MIN, MG_PLAY_Y_MAX - MG_NOISE_SIZE)
+                if abs(x - MG_PLAYER_START_X) >= MG_MIN_DIST or abs(y - MG_PLAYER_START_Y) >= MG_MIN_DIST:
+                    break
+            vx = pyxel.rndi(0, 1) * 2 - 1
+            vy = pyxel.rndi(0, 1) * 2 - 1
+            self.mg_noises.append({"x": x, "y": y, "vx": vx, "vy": vy})
+
+    def update_minigame_lights(self):
+        if self.mg_phase == "intro":
+            if pyxel.btnp(pyxel.KEY_RETURN):
+                self.mg_phase = "playing"
+            return
+
+        if self.mg_result is None:
+            self._update_player_move()
+
+            self.mg_timer -= 1
+            if self.mg_hurt_timer > 0:
+                self.mg_hurt_timer -= 1
+
+            for noise in self.mg_noises:
+                noise["x"] += noise["vx"] * MG_NOISE_SPEED
+                noise["y"] += noise["vy"] * MG_NOISE_SPEED
+                if noise["x"] < MG_PLAY_X_MIN or noise["x"] > MG_PLAY_X_MAX - MG_NOISE_SIZE:
+                    noise["vx"] *= -1
+                    noise["x"] = max(MG_PLAY_X_MIN, min(noise["x"], MG_PLAY_X_MAX - MG_NOISE_SIZE))
+                if noise["y"] < MG_PLAY_Y_MIN or noise["y"] > MG_PLAY_Y_MAX - MG_NOISE_SIZE:
+                    noise["vy"] *= -1
+                    noise["y"] = max(MG_PLAY_Y_MIN, min(noise["y"], MG_PLAY_Y_MAX - MG_NOISE_SIZE))
+
+            px, py = self.mg_player_x, self.mg_player_y
+            for light in self.mg_lights:
+                if light["collected"]:
+                    continue
+                lx, ly = light["x"], light["y"]
+                if (px < lx + MG_LIGHT_RADIUS and px + MG_PLAYER_SIZE > lx - MG_LIGHT_RADIUS and
+                        py < ly + MG_LIGHT_RADIUS and py + MG_PLAYER_SIZE > ly - MG_LIGHT_RADIUS):
+                    light["collected"] = True
+                    self.mg_lights_collected += 1
+                    pyxel.play(0, 0)
+
+            if self.mg_hurt_timer == 0:
+                for noise in self.mg_noises:
+                    nx, ny = noise["x"], noise["y"]
+                    if (px < nx + MG_NOISE_SIZE and px + MG_PLAYER_SIZE > nx and
+                            py < ny + MG_NOISE_SIZE and py + MG_PLAYER_SIZE > ny):
+                        self.mg_timer = max(0, self.mg_timer - MG_NOISE_HIT_PENALTY)
+                        self.mg_hurt_timer = MG_HURT_INVINCIBLE_FRAMES
+                        break
+
+            if self.mg_lights_collected >= MG_LIGHTS_REQUIRED:
+                self.mg_result = "clear"
+            elif self.mg_timer <= 0:
+                self.mg_result = "fail"
+
+        elif self.mg_result == "clear":
+            if pyxel.btnp(pyxel.KEY_RETURN):
+                self.advance_to_next_after_minigame()
+        elif self.mg_result == "fail":
+            if pyxel.btnp(pyxel.KEY_RETURN):
+                self.start_minigame_lights()
+
+    def draw_minigame_lights(self):
+        pyxel.cls(MG_BG_BY_LIGHTS_COUNT[min(self.mg_lights_collected, 6)])
+
+        if self.mg_phase == "intro":
+            self._draw_minigame_lights_intro()
+            return
+
+        fc = pyxel.frame_count
+        fc6 = fc % 6
+
+        if self.mg_result is None:
+            bar_w = int(160 * self.mg_timer / MG_LIGHTS_TIMER_MAX)
+            pyxel.rect(0, 0, bar_w, 4, 10)
+            secs = (self.mg_timer + 59) // 60
+            secs_str = str(secs)
+            sw = self.font.text_width(secs_str)
+            pyxel.text(158 - sw, 0, secs_str, 10, self.font)
+        elif self.mg_result == "clear":
+            pyxel.rect(0, 0, 160, 4, 10)
+
+        pyxel.rectb(8, 5, 144, 94, 5)
+
+        for light in self.mg_lights:
+            lx, ly = light["x"], light["y"]
+            if light["collected"]:
+                pyxel.pset(lx, ly, 9)
+            else:
+                if fc % 30 < 22:
+                    pyxel.circ(lx, ly, MG_LIGHT_RADIUS, 10)
+                    pyxel.pset(lx, ly, 7)
+
+        noise_col = 5 if fc6 < 3 else 6
+        for noise in self.mg_noises:
+            pyxel.rect(noise["x"], noise["y"], MG_NOISE_SIZE, MG_NOISE_SIZE, noise_col)
+
+        if self.mg_result is None:
+            if self.mg_hurt_timer == 0 or fc6 >= 3:
+                pyxel.rect(self.mg_player_x, self.mg_player_y, MG_PLAYER_SIZE, MG_PLAYER_SIZE, 10)
+
+        pyxel.text(10, 6, f"{self.mg_lights_collected}/{MG_LIGHTS_REQUIRED}", 7, self.font)
+
+        if self.mg_result == "clear":
+            self.draw_centered_text("心に光が灯った", 62, 10)
+            if fc % 60 < 30:
+                self.draw_centered_text("ENTERで次へ", 76, 7)
+        elif self.mg_result == "fail":
+            self.draw_centered_text("光が消えた", 62, 8)
+            if fc % 60 < 30:
+                self.draw_centered_text("ENTERでリトライ", 76, 7)
+
+        pyxel.rect(0, 100, 160, 20, 0)
+        pyxel.line(0, 100, 159, 100, 5)
+
+        if self.mg_result == "clear":
+            self.draw_centered_text("避難所は確かにあった", 107, 10)
+        else:
+            self.draw_centered_text("薄明かり集め", 107, 6)
+
+    def _draw_minigame_lights_intro(self):
+        self._draw_minigame_intro([
+            ("薄明かり集め", 10),
+            ("---", 5),
+            ("ノイズを避けながら、", 7),
+            ("小さな明かりを集めよ。", 7),
+            ("---", 5),
+            ("十字キー：移動", 6),
+            (f"目標：{MG_LIGHTS_REQUIRED}個　制限時間：{MG_LIGHTS_TIMER_MAX // 60}秒", 6),
+        ])
 
 
 Game()
