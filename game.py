@@ -22,6 +22,23 @@ MG_PLAYER_START_X = 76
 MG_PLAYER_START_Y = 52
 MG_BG_BY_LIGHTS_COUNT = (1, 1, 5, 5, 2, 2, 4)  # 収集数0〜MG_LIGHTS_REQUIRED個に対応する背景色
 
+# ステージ3 札はがしパズル
+MG_LABELS_TIMER_MAX = 900   # 15秒 × 60fps
+MG_LABELS_COLS = 3           # 列数
+MG_LABELS_ROWS = 2           # 行数
+MG_LABELS_PENALTY = 120      # 間違いペナルティ（2秒）
+MG_LABELS_GRID_X = 14        # グリッド開始X
+MG_LABELS_GRID_Y = 12        # グリッド開始Y
+MG_LABELS_CELL_W = 44        # セル幅
+MG_LABELS_CELL_H = 36        # セル高さ
+MG_LABELS_GAP_X = 4          # セル間隔X
+MG_LABELS_GAP_Y = 4          # セル間隔Y
+MG_LABELS_TOTAL = MG_LABELS_COLS * MG_LABELS_ROWS  # 札の総枚数
+MG_LABELS_WRONG_TIMER = 90   # 間違い演出の継続フレーム数
+LABEL_TEXTS = ["無駄", "悪影響", "子供っぽい", "甘え", "逃げ", "弱さ"]
+LABEL_HIDDEN = ["救われた", "実感は", "本物だ", "誰にも", "取り上げ", "られない"]
+LABEL_COMPLETE = "救われた実感は本物だ"
+
 # シーン定義
 # choices がある → 選択肢シーン
 # next がある    → 直線進行シーン
@@ -81,6 +98,7 @@ SCENES = {
         ],
         "choices": ["救われた自分の実感", "外から貼られたラベル"],
         "next": [4, 6],
+        "minigame": "labels",
     },
     4: {
         "name": "管理人",
@@ -139,9 +157,9 @@ class Game:
         self.char_count = 0
         self.page = 0
         self.next_after_minigame = 0
-        # [開発用] ステージ2ミニゲーム直接起動（確認後はコメントアウト）
-        # self.next_after_minigame = 3
-        # self.start_minigame_lights()
+        # [開発用] ステージ３ミニゲーム直接起動（確認後はコメントアウト）
+        # self.next_after_minigame = 4
+        # self.start_minigame_labels()
         pyxel.run(self.update, self.draw)
 
     def update(self) -> None:
@@ -159,6 +177,10 @@ class Game:
 
         if self.state == "minigame_lights":
             self.update_minigame_lights()
+            return
+
+        if self.state == "minigame_labels":
+            self.update_minigame_labels()
             return
 
         scene = SCENES[self.scene]
@@ -203,6 +225,8 @@ class Game:
                     self.start_minigame_fragments()
                 elif scene["minigame"] == "lights":
                     self.start_minigame_lights()
+                elif scene["minigame"] == "labels":
+                    self.start_minigame_labels()
             else:
                 self.scene = next_scene
         elif "next" in scene:
@@ -219,6 +243,8 @@ class Game:
             self.draw_minigame_fragments()
         elif self.state == "minigame_lights":
             self.draw_minigame_lights()
+        elif self.state == "minigame_labels":
+            self.draw_minigame_labels()
         else:
             self.draw_game()
 
@@ -694,6 +720,134 @@ class Game:
             ("---", 5),
             ("十字キー：移動", 6),
             (f"目標：{MG_LIGHTS_REQUIRED}個　制限時間：{MG_LIGHTS_TIMER_MAX // 60}秒", 6),
+        ])
+
+    def start_minigame_labels(self):
+        self.mg_timer = MG_LABELS_TIMER_MAX
+        self.mg_result = None
+        self.mg_phase = "intro"
+        self.mg_labels_cursor = 0
+        self.mg_labels_peeled = [False] * MG_LABELS_TOTAL
+        self.mg_labels_next_index = 0
+        self.mg_labels_wrong_timer = 0
+        self.state = "minigame_labels"
+
+    def update_minigame_labels(self):
+        if self.mg_phase == "intro":
+            if pyxel.btnp(pyxel.KEY_RETURN):
+                self.mg_phase = "playing"
+            return
+
+        if self.mg_result is None:
+            self.mg_timer -= 1
+            if self.mg_labels_wrong_timer > 0:
+                self.mg_labels_wrong_timer -= 1
+
+            cur = self.mg_labels_cursor
+            col = cur % MG_LABELS_COLS
+            row = cur // MG_LABELS_COLS
+
+            if pyxel.btnp(pyxel.KEY_LEFT) and col > 0:
+                self.mg_labels_cursor -= 1
+            if pyxel.btnp(pyxel.KEY_RIGHT) and col < MG_LABELS_COLS - 1:
+                self.mg_labels_cursor += 1
+            if pyxel.btnp(pyxel.KEY_UP) and row > 0:
+                self.mg_labels_cursor -= MG_LABELS_COLS
+            if pyxel.btnp(pyxel.KEY_DOWN) and row < MG_LABELS_ROWS - 1:
+                self.mg_labels_cursor += MG_LABELS_COLS
+
+            if pyxel.btnp(pyxel.KEY_RETURN):
+                if not self.mg_labels_peeled[self.mg_labels_cursor]:
+                    if self.mg_labels_cursor == self.mg_labels_next_index:
+                        self.mg_labels_peeled[self.mg_labels_cursor] = True
+                        self.mg_labels_next_index += 1
+                        pyxel.play(0, 0)
+                    else:
+                        self.mg_timer = max(0, self.mg_timer - MG_LABELS_PENALTY)
+                        self.mg_labels_wrong_timer = MG_LABELS_WRONG_TIMER
+
+            if self.mg_labels_next_index >= MG_LABELS_TOTAL:
+                self.mg_result = "clear"
+            elif self.mg_timer <= 0:
+                self.mg_result = "fail"
+
+        elif self.mg_result == "clear":
+            if pyxel.btnp(pyxel.KEY_RETURN):
+                self.advance_to_next_after_minigame()
+        elif self.mg_result == "fail":
+            if pyxel.btnp(pyxel.KEY_RETURN):
+                self.start_minigame_labels()
+
+    def draw_minigame_labels(self):
+        pyxel.cls(1)
+
+        if self.mg_phase == "intro":
+            self._draw_minigame_labels_intro()
+            return
+
+        fc = pyxel.frame_count
+
+        if self.mg_result is None:
+            bar_w = int(160 * self.mg_timer / MG_LABELS_TIMER_MAX)
+            pyxel.rect(0, 0, bar_w, 4, 8)
+            secs = (self.mg_timer + 59) // 60
+            secs_str = str(secs)
+            sw = self.font.text_width(secs_str)
+            pyxel.text(158 - sw, 0, secs_str, 8, self.font)
+        elif self.mg_result == "clear":
+            pyxel.rect(0, 0, 160, 4, 10)
+
+        for i in range(MG_LABELS_TOTAL):
+            col = i % MG_LABELS_COLS
+            row = i // MG_LABELS_COLS
+            cx = MG_LABELS_GRID_X + col * (MG_LABELS_CELL_W + MG_LABELS_GAP_X)
+            cy = MG_LABELS_GRID_Y + row * (MG_LABELS_CELL_H + MG_LABELS_GAP_Y)
+            peeled = self.mg_labels_peeled[i]
+
+            if peeled:
+                pyxel.rect(cx, cy, MG_LABELS_CELL_W, MG_LABELS_CELL_H, 5)
+                text, text_col = LABEL_HIDDEN[i], 10
+            else:
+                is_next = (i == self.mg_labels_next_index)
+                is_wrong_flash = (self.mg_labels_wrong_timer > 0 and is_next and fc % 10 < 5)
+                bg_col = 8 if is_wrong_flash else (13 if is_next and self.mg_labels_wrong_timer > MG_LABELS_WRONG_TIMER // 3 else 2)
+                pyxel.rect(cx, cy, MG_LABELS_CELL_W, MG_LABELS_CELL_H, bg_col)
+                text, text_col = LABEL_TEXTS[i], 7
+
+            tw = self.font.text_width(text)
+            tx = cx + (MG_LABELS_CELL_W - tw) // 2
+            ty = cy + (MG_LABELS_CELL_H - 8) // 2
+            pyxel.text(tx, ty, text, text_col, self.font)
+
+            if i == self.mg_labels_cursor and self.mg_result is None:
+                pyxel.rectb(cx - 1, cy - 1, MG_LABELS_CELL_W + 2, MG_LABELS_CELL_H + 2, 10)
+
+        if self.mg_result == "clear":
+            self.draw_centered_text("決めつけをはがした", 62, 10)
+            if fc % 60 < 30:
+                self.draw_centered_text("ENTERで次へ", 76, 7)
+        elif self.mg_result == "fail":
+            self.draw_centered_text("時間切れ", 62, 8)
+            if fc % 60 < 30:
+                self.draw_centered_text("ENTERでリトライ", 76, 7)
+
+        pyxel.rect(0, 100, 160, 20, 0)
+        pyxel.line(0, 100, 159, 100, 5)
+
+        if self.mg_result == "clear":
+            self.draw_centered_text(LABEL_COMPLETE, 107, 10)
+        else:
+            self.draw_centered_text("札はがしパズル", 107, 6)
+
+    def _draw_minigame_labels_intro(self):
+        self._draw_minigame_intro([
+            ("札はがしパズル", 10),
+            ("---", 5),
+            ("正しい順番で、ラベルをはがせ。", 7),
+            ("順番を間違えると時間が減る。", 7),
+            ("---", 5),
+            ("十字キー：移動　ENTER：はがす", 6),
+            (f"制限時間：{MG_LABELS_TIMER_MAX // 60}秒", 6),
         ])
 
 
