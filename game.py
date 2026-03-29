@@ -149,70 +149,72 @@ class Game:
                     self.char_count = 0
                     pyxel.play(0, 0)
                 else:
-                    if "choices" in scene:
-                        # 次のシーンに移動
-                        self.scene = scene["next"][self.cursor]
-
-                    elif "next" in scene:
-                        # 次のシーンに移動
-                        self.scene = scene["next"]
-
-                    elif "end" in scene:
-                        # タイトルに戻る
-                        self.state = "title"
-                        self.scene = 0
-
-                    pyxel.play(0, 0)
-                    self.cursor = 0
-                    self.char_count = 0
-                    self.page = 0
+                    self.advance_scene(scene)
         else:
             if pyxel.frame_count % 3 == 0:
                 self.char_count += 1
                 if self.char_count > total_char:
                     self.char_count = total_char
 
+    def advance_scene(self, scene) -> None:
+        """シーンを次に進める"""
+        if "choices" in scene:
+            self.scene = scene["next"][self.cursor]
+        elif "next" in scene:
+            self.scene = scene["next"]
+        elif "end" in scene:
+            self.state = "title"
+            self.scene = 0
+        pyxel.play(0, 0)
+        self.cursor = 0
+        self.char_count = 0
+        self.page = 0
+
     def draw(self) -> None:
         """画面を描画する関数"""
-
-        # タイトル画面の描画
         if self.state == "title":
-            pyxel.cls(0)
+            self.draw_title()
+        else:
+            self.draw_game()
 
-            # 多重枠（高さを60pxに拡大）
-            pyxel.rectb(2,  4, 156, 60, 1)
-            pyxel.rectb(3,  5, 154, 58, 12)
-            pyxel.rectb(4,  6, 152, 56, 13)
-            pyxel.rectb(5,  7, 150, 54, 7)
-            pyxel.rectb(6,  8, 148, 52, 11)
-            pyxel.rectb(7,  9, 146, 50, 3)
+    def draw_title(self) -> None:
+        """タイトル画面の描画"""
+        pyxel.cls(0)
 
-            # タイトル文字（4倍拡大 + グラデーション + ドロップシャドウ）
-            title = "THANKS"
-            tw = self.font.text_width(title)
-            scale = 4
-            pyxel.image(1).cls(0)
-            pyxel.image(1).text(0, 0, title, 1, self.font)
-            sx = (160 - tw * scale) // 2
-            sy = 10 + (48 - 8 * scale) // 2 + 1  # 枠内（y=10〜57）の縦中央（1px下げて視覚調整）
-            # 行ごとのグラデーション色（上: 明るいオレンジ → 下: 暗いオレンジ）
-            row_colors = [10, 10, 9, 9, 9, 9, 8, 8]
-            for row in range(8):
-                for col in range(tw):
-                    if pyxel.image(1).pget(col, row) != 0:
-                        # ドロップシャドウ（1px 右下にずれた黒）
-                        pyxel.rect(sx + col * scale + 2, sy + row * scale + 2, scale, scale, 1)
-                        # 本体（グラデーション色）
-                        pyxel.rect(sx + col * scale, sy + row * scale, scale, scale, row_colors[row])
+        # 多重枠（高さを60pxに拡大）
+        pyxel.rectb(2,  4, 156, 60, 1)
+        pyxel.rectb(3,  5, 154, 58, 12)
+        pyxel.rectb(4,  6, 152, 56, 13)
+        pyxel.rectb(5,  7, 150, 54, 7)
+        pyxel.rectb(6,  8, 148, 52, 11)
+        pyxel.rectb(7,  9, 146, 50, 3)
 
-            # 点滅する PRESS ENTER KEY
-            if pyxel.frame_count % 60 < 30:
-                enter_text = "PRESS ENTER KEY"
-                ex = (160 - self.font.text_width(enter_text)) // 2
-                pyxel.text(ex, 82, enter_text, 10, self.font)
+        # タイトル文字（4倍拡大 + グラデーション + ドロップシャドウ）
+        title = "THANKS"
+        tw = self.font.text_width(title)
+        scale = 4
+        pyxel.image(1).cls(0)
+        pyxel.image(1).text(0, 0, title, 1, self.font)
+        sx = (160 - tw * scale) // 2
+        sy = 10 + (48 - 8 * scale) // 2 + 1  # 枠内（y=10〜57）の縦中央（1px下げて視覚調整）
+        # 行ごとのグラデーション色（上: 明るいオレンジ → 下: 暗いオレンジ）
+        row_colors = [10, 10, 9, 9, 9, 9, 8, 8]
+        for row in range(8):
+            for col in range(tw):
+                if pyxel.image(1).pget(col, row) != 0:
+                    # ドロップシャドウ（1px 右下にずれた黒）
+                    pyxel.rect(sx + col * scale + 2, sy + row * scale + 2, scale, scale, 1)
+                    # 本体（グラデーション色）
+                    pyxel.rect(sx + col * scale, sy + row * scale, scale, scale, row_colors[row])
 
-            return
-        
+        # 点滅する PRESS ENTER KEY
+        if pyxel.frame_count % 60 < 30:
+            enter_text = "PRESS ENTER KEY"
+            ex = (160 - self.font.text_width(enter_text)) // 2
+            pyxel.text(ex, 82, enter_text, 10, self.font)
+
+    def draw_game(self) -> None:
+        """ゲーム画面の描画"""
         pyxel.cls(1)
         scene = SCENES[self.scene]
 
@@ -229,30 +231,33 @@ class Game:
         pages = self.get_scene_pages(scene)
         is_last_page = (self.page == len(pages) - 1)
         current_page_entries = pages[self.page] if self.page < len(pages) else []
+        all_shown = self.is_all_text_shown()
 
         # 選択肢（最後のページのみ）
-        if "choices" in scene and is_last_page:
-            if self.is_all_text_shown():
-                prefix_w = self.font.text_width("> ")
-                choice_y = 94
-                for i, choice in enumerate(scene["choices"]):
-                    col = 10 if i == self.cursor else 7
-                    prefix = "> " if i == self.cursor else "  "
-                    wrapped = self.wrap_text(choice, 146 - prefix_w)
-                    for j, wline in enumerate(wrapped):
-                        indent = prefix if j == 0 else " " * len(prefix)
-                        pyxel.text(8, choice_y, indent + wline, col, self.font)
-                        choice_y += 10
+        if "choices" in scene and is_last_page and all_shown:
+            prefix_w = self.font.text_width("> ")
+            choice_lines = [self.wrap_text(c, 146 - prefix_w) for c in scene["choices"]]
+            total_h = sum(len(lines) * 8 for lines in choice_lines) + (len(scene["choices"]) - 1) * 2
+            num_display_lines = sum(len(wlines) for _, wlines in current_page_entries)
+            text_bottom = 50 + (num_display_lines - 1) * 10 + 7
+            choice_y = max(text_bottom + 2, 115 - total_h)
+            for i, (choice, wrapped) in enumerate(zip(scene["choices"], choice_lines)):
+                col = 10 if i == self.cursor else 7
+                prefix = "> " if i == self.cursor else "  "
+                for j, wline in enumerate(wrapped):
+                    indent = prefix if j == 0 else " " * len(prefix)
+                    pyxel.text(8, choice_y, indent + wline, col, self.font)
+                    choice_y += 8
+                if i < len(scene["choices"]) - 1:
                     choice_y += 2
 
         # エンディング表示（最後のページのみ）
-        if "end" in scene and is_last_page:
-            if self.is_all_text_shown():
-                pyxel.text(8, 94, scene["end"], 9, self.font)
-                pyxel.text(8, 106, "ENTERで最初へ戻る", 6, self.font)
+        if "end" in scene and is_last_page and all_shown:
+            pyxel.text(8, 94, scene["end"], 9, self.font)
+            pyxel.text(8, 106, "ENTERで最初へ戻る", 6, self.font)
 
         # ページ続行インジケーター
-        if not is_last_page and self.is_all_text_shown():
+        if not is_last_page and all_shown:
             pyxel.text(148, 108, "v", 7, self.font)
 
         # セリフ
@@ -266,7 +271,7 @@ class Game:
                     break
                 show = min(r, len(wline))
                 pyxel.text(8, y, wline[:show], 7, self.font)
-                y += 12
+                y += 10
                 r -= show
             remaining -= chars_in_line
             if remaining <= 0:
@@ -275,11 +280,11 @@ class Game:
     def get_scene_pages(self, scene):
         """シーンのテキストを最大4行ずつページに分割する"""
         MAX_LINES = 4
-        wrapped_by_line = [self.wrap_text(line, 146) for line in scene["text"]]
         pages = []
         current_page = []
         current_count = 0
-        for line, wlines in zip(scene["text"], wrapped_by_line):
+        for line in scene["text"]:
+            wlines = self.wrap_text(line, 146)
             if current_count + len(wlines) > MAX_LINES and current_page:
                 pages.append(current_page)
                 current_page = [(line, wlines)]
